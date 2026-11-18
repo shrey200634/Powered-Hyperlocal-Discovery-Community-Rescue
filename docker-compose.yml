@@ -1,0 +1,23 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: nexus-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USERNAME}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "${DB_PORT}:3306"          # laptop port from .env → container's 3306
+    volumes:
+      - nexus-mysql-data:/var/lib/mysql
+
+  redis:
+    image: redis:7
+    container_name: nexus-redis
+    command: ["redis-server", "--notify-keyspace-events", "Ex"]
+    ports:
+      - "${REDIS_PORT}:6379"
+
+volumes:
+  nexus-mysql-data:

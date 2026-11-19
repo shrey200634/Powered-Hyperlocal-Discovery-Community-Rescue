@@ -42,6 +42,10 @@ management:
 nexus:
   jwt:
     secret: ${JWT_SECRET}
-    access-ttl: 15m       # access token lifetime
-    refresh-ttl: 30d      # refresh token lifetime
-    signup-ttl: 10m       # time to finish the signup form after OTP
+    access-ttl: 15m
+    refresh-ttl: 30d
+    signup-ttl: 10m
+  otp:
+    ttl: 5m                 # OTP valid for 5 minutes
+    resend-cooldown: 30s    # can't request a new OTP within 30s
+    log-to-console: true    # DEV ONLY: prints OTP in logs. false once SMS works

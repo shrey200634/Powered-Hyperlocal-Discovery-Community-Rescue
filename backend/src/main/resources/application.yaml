@@ -38,3 +38,10 @@ management:
   endpoint:
     health:
       show-details: always
+
+nexus:
+  jwt:
+    secret: ${JWT_SECRET}
+    access-ttl: 15m       # access token lifetime
+    refresh-ttl: 30d      # refresh token lifetime
+    signup-ttl: 10m       # time to finish the signup form after OTP

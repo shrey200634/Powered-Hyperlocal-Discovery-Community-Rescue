@@ -43,8 +43,23 @@ dependencies {
 	implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
 	runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
 	runtimeOnly 'io.jsonwebtoken:jjwt-gson:0.12.6'
+
+	// Spring Modulith: outbox (event publication registry) + module checks
+	implementation 'org.springframework.modulith:spring-modulith-starter-core'
+	implementation 'org.springframework.modulith:spring-modulith-starter-jpa'
+	testImplementation 'org.springframework.modulith:spring-modulith-starter-test'
 }
 
 tasks.named('test') {
 	useJUnitPlatform()
+}
+
+ext {
+	set('springModulithVersion', "2.1.1")
+}
+
+dependencyManagement {
+	imports {
+		mavenBom "org.springframework.modulith:spring-modulith-bom:${springModulithVersion}"
+	}
 }

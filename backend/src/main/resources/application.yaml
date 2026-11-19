@@ -10,6 +10,10 @@ spring:
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
 
+  modulith:
+    events:
+      republish-outstanding-events-on-restart: true   # crash recovery: resend unfinished events
+
   jpa:
     hibernate:
       ddl-auto: update
@@ -49,3 +53,9 @@ nexus:
     ttl: 5m                 # OTP valid for 5 minutes
     resend-cooldown: 30s    # can't request a new OTP within 30s
     log-to-console: true    # DEV ONLY: prints OTP in logs. false once SMS works
+
+  crypto:
+    field-key: ${FIELD_ENCRYPTION_KEY}
+
+  admin:
+    phone: ${ADMIN_PHONE:}      # ":" = empty if missing → seeder does nothing

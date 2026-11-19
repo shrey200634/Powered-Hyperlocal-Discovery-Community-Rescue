@@ -13,4 +13,7 @@ public enum Role {
     public boolean isSelfSignupAllowed() {
         return this != MUNICIPAL && this != ADMIN;
     }
+    public boolean requiresVerification() {
+        return this == NGO || this == SHOPKEEPER || this == VOLUNTEER;
+    }
 }

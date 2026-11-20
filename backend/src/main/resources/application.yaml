@@ -59,3 +59,7 @@ nexus:
 
   admin:
     phone: ${ADMIN_PHONE:}      # ":" = empty if missing → seeder does nothing
+
+  inventory:
+    stale-after: 7d          # doc 10 + 12: shop hidden from search if stock not confirmed in 7 days
+    time-zone: Asia/Kolkata  # for "open now"

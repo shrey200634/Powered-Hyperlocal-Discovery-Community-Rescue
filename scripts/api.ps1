@@ -1,26 +1,15 @@
 # Test helper for the Nexus API.
-# Load in any PowerShell window with:   . .\scripts\api.ps1   (from repo root)
+# Load in any PowerShell window from the repo root:   . .\scripts\api.ps1
 
-$global:base = "http://localhost:8080"
+$global:base      = "http://localhost:8080"
+$global:NexusRoot = Split-Path $PSScriptRoot -Parent      # repo root, captured while the script loads
 
 function global:Api {
-    param(
-        [string]$Method,
-        [string]$Path,
-        $Body = $null,
-        [string]$Token = $null
-    )
+    param([string]$Method, [string]$Path, $Body = $null, [string]$Token = $null)
     $headers = @{}
     if ($Token) { $headers["Authorization"] = "Bearer $Token" }
-
-    $params = @{
-        Method      = $Method
-        Uri         = "$global:base$Path"
-        Headers     = $headers
-        ContentType = "application/json"
-    }
+    $params = @{ Method = $Method; Uri = "$global:base$Path"; Headers = $headers; ContentType = "application/json" }
     if ($Body) { $params["Body"] = ($Body | ConvertTo-Json -Compress) }
-
     try {
         $res = Invoke-RestMethod @params
         Write-Host "OK  $Method $Path" -ForegroundColor Green
@@ -37,4 +26,13 @@ function global:Api {
     }
 }
 
-Write-Host "Api helper loaded -> $global:base" -ForegroundColor Cyan
+function global:Sql {
+    param([string]$Query)
+    $envFile = Join-Path $global:NexusRoot ".env"
+    $pw = (Select-String -Path $envFile -Pattern '^DB_PASSWORD=').Line.Split('=', 2)[1]
+    docker exec nexus-mysql mysql -u nexus "-p$pw" nexus -e $Query
+}
+
+
+
+Write-Host "Helpers loaded: Api, Sql  (root: $global:NexusRoot)" -ForegroundColor Cyan

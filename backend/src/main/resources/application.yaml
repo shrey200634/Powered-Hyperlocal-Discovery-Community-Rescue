@@ -61,5 +61,8 @@ nexus:
     phone: ${ADMIN_PHONE:}      # ":" = empty if missing → seeder does nothing
 
   inventory:
-    stale-after: 7d          # doc 10 + 12: shop hidden from search if stock not confirmed in 7 days
-    time-zone: Asia/Kolkata  # for "open now"
+    stale-after: 7d
+    time-zone: Asia/Kolkata
+    default-city: bhopal          # pilot runs in one city
+    default-radius-m: 2000        # 2 km if the app doesn't send a radius
+    max-radius-m: 5000            # nobody searches 50 km for a tablet

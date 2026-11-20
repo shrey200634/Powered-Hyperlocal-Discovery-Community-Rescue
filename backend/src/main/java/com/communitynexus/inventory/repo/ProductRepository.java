@@ -1,0 +1,31 @@
+package com.communitynexus.inventory.repo;
+
+import com.communitynexus.inventory.entity.Product;
+import com.communitynexus.inventory.entity.ProductCategory;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
+import java.time.LocalDate;
+import java.util.Collection;
+import java.util.List;
+
+public interface ProductRepository extends JpaRepository<Product, Long> {
+
+    List<Product> findByStore_IdOrderByNameAsc(Long storeId);
+
+
+    @Query("""
+            select p from Product p
+            join fetch p.store s
+            where s.id in :storeIds
+              and p.quantity > 0
+              and (p.expiryDate is null or p.expiryDate >= :today)
+              and p.nameKey like concat('%', :q, '%')
+              and (:category is null or p.category = :category)
+            """)
+    List<Product> searchInStores(@Param("storeIds") Collection<Long> storeIds,
+                                 @Param("q") String q,
+                                 @Param("category") ProductCategory category,
+                                 @Param("today") LocalDate today);
+}

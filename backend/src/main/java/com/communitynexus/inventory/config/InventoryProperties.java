@@ -8,6 +8,9 @@ import java.time.ZoneId;
 @ConfigurationProperties(prefix = "nexus.inventory")
 public record InventoryProperties(
         Duration staleAfter,
-        ZoneId timeZone
+        ZoneId timeZone,
+         String defaultCity,
+        int defaultRadiusM,
+        int maxRadiusM
 ) {
 }

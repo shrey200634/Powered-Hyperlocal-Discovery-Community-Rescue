@@ -3,11 +3,22 @@ package com.communitynexus.inventory.geo;
 import com.communitynexus.inventory.entity.Store;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.geo.Distance;
 import org.springframework.data.geo.Point;
+import org.springframework.data.redis.connection.RedisGeoCommands;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+
+import org.springframework.data.geo.GeoResult;
+import org.springframework.data.geo.GeoResults;
+import org.springframework.data.geo.Metrics;
+import org.springframework.data.redis.domain.geo.GeoReference;
+
+import java.util.List;
+
+import java.util.List;
 
 
 @Slf4j
@@ -56,5 +67,30 @@ public class StoreGeoIndex {
 
     public void clear(String city) {
         redis.delete(key(city));
+    }
+
+
+    public List<StoreDistance> nearby(String city, double lat, double lng, int radiusMeters, int limit) {
+        GeoResults<RedisGeoCommands.GeoLocation<String>> results = redis.opsForGeo().search(
+                key(city),
+                GeoReference.fromCoordinate(lng, lat),                       // again: lng first
+                new Distance(radiusMeters / 1000.0, Metrics.KILOMETERS),
+                RedisGeoCommands.GeoSearchCommandArgs.newGeoSearchArgs()
+                        .includeDistance()
+                        .sortAscending()
+                        .limit(limit));
+
+        if (results == null) {
+            return List.of();
+        }
+        return results.getContent().stream()
+                .map(StoreGeoIndex::toStoreDistance)
+                .toList();
+    }
+
+    private static StoreDistance toStoreDistance(GeoResult<RedisGeoCommands.GeoLocation<String>> r) {
+        Long storeId = Long.valueOf(r.getContent().getName());
+        double meters = r.getDistance().getValue() * 1000.0;               // we asked in km
+        return new StoreDistance(storeId, meters);
     }
 }

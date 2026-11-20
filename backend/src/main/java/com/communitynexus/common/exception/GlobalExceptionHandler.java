@@ -6,8 +6,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+
 
 
 @Slf4j
@@ -49,5 +52,17 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleBadJson(HttpMessageNotReadableException ex) {
         return ResponseEntity.badRequest()
                 .body(ApiError.of("BAD_REQUEST", "Request body is invalid or has a wrong value"));
+    }
+
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ApiError> handleMissingParam(MissingServletRequestParameterException ex) {
+        return ResponseEntity.badRequest()
+                .body(new ApiError("VALIDATION_FAILED", "Missing parameter", ex.getParameterName()));
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiError> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        return ResponseEntity.badRequest()
+                .body(new ApiError("VALIDATION_FAILED", "Wrong value for parameter", ex.getName()));
     }
 }

@@ -33,6 +33,16 @@ function global:Sql {
     docker exec nexus-mysql mysql -u nexus "-p$pw" nexus -e $Query
 }
 
+function global:Login {
+    param([string]$Phone)
+    Api POST /auth/otp/send @{ phone = $Phone } | Out-Null      # 429 cooldown is fine: last OTP still works
+    $otp = Read-Host "OTP for $Phone (copy from bootRun console)"
+    $v = Api POST /auth/otp/verify @{ phone = $Phone; otp = $otp }
+    if ($v.newUser) {
+        Write-Host "$Phone is not registered yet - sign up first" -ForegroundColor Yellow
+        return $null
+    }
+    return $v.tokens
+}
 
-
-Write-Host "Helpers loaded: Api, Sql  (root: $global:NexusRoot)" -ForegroundColor Cyan
+Write-Host "Helpers loaded: Api, Sql, Login  (root: $global:NexusRoot)" -ForegroundColor Cyan

@@ -66,3 +66,7 @@ nexus:
     default-city: bhopal          # pilot runs in one city
     default-radius-m: 2000        # 2 km if the app doesn't send a radius
     max-radius-m: 5000            # nobody searches 50 km for a tablet
+    second-life:
+      flag-within-days: 2          # items expiring today/tomorrow/day after show up
+      default-discount-pct: 30     # suggested save-it price = 30% off
+      donate-at: "17:00"           # doc story: "at 5 pm the last five are offered to an NGO"

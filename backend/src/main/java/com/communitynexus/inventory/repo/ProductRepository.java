@@ -28,4 +28,16 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
                                  @Param("q") String q,
                                  @Param("category") ProductCategory category,
                                  @Param("today") LocalDate today);
+
+    //In-stock products of one store expiring between today and 'until' (soonest first)
+    @Query("""
+            select p from Product p
+            where p.store.id = :storeId
+              and p.quantity > 0
+              and p.expiryDate between :today and :until
+            order by p.expiryDate asc
+            """)
+    List<Product> findNearExpiry(@Param("storeId") Long storeId,
+                                 @Param("today") LocalDate today,
+                                 @Param("until") LocalDate until);
 }

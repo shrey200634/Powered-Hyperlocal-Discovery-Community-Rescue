@@ -3,14 +3,22 @@ package com.communitynexus.inventory.config;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.time.Duration;
+import java.time.LocalTime;
 import java.time.ZoneId;
 
 @ConfigurationProperties(prefix = "nexus.inventory")
 public record InventoryProperties(
         Duration staleAfter,
         ZoneId timeZone,
-         String defaultCity,
+        String defaultCity,
         int defaultRadiusM,
-        int maxRadiusM
+        int maxRadiusM,
+        SecondLife secondLife
 ) {
+    public record SecondLife(
+            int flagWithinDays,
+            int defaultDiscountPct,
+            LocalTime donateAt
+    ) {
+    }
 }

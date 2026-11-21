@@ -1,7 +1,7 @@
 package com.communitynexus.inventory.repo;
 
 import com.communitynexus.inventory.entity.Product;
-import com.communitynexus.inventory.entity.ProductCategory;
+import com.communitynexus.inventory.ProductCategory;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;

@@ -1,7 +1,7 @@
 package com.communitynexus.inventory.dto;
 
 import com.communitynexus.inventory.entity.Store;
-import com.communitynexus.inventory.entity.StoreCategory;
+import com.communitynexus.inventory.StoreCategory;
 
 import java.time.Duration;
 import java.time.Instant;

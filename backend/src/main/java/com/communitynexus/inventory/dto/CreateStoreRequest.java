@@ -1,6 +1,6 @@
 package com.communitynexus.inventory.dto;
 
-import com.communitynexus.inventory.entity.StoreCategory;
+import com.communitynexus.inventory.StoreCategory;
 import jakarta.validation.constraints.*;
 
 import java.time.LocalTime;

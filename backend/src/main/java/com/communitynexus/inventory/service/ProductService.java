@@ -1,6 +1,7 @@
 package com.communitynexus.inventory.service;
 
 import com.communitynexus.common.exception.NexusException;
+import com.communitynexus.inventory.ProductCategory;
 import com.communitynexus.inventory.config.InventoryProperties;
 import com.communitynexus.inventory.dto.*;
 import com.communitynexus.inventory.entity.*;

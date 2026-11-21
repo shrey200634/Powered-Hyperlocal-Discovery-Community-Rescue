@@ -1,6 +1,7 @@
 package com.communitynexus.inventory.entity;
 
 import com.communitynexus.common.entity.BaseEntity;
+import com.communitynexus.inventory.StoreCategory;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;

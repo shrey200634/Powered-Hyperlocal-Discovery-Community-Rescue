@@ -1,6 +1,6 @@
 package com.communitynexus.inventory.dto;
 
-import com.communitynexus.inventory.entity.ProductCategory;
+import com.communitynexus.inventory.ProductCategory;
 import jakarta.validation.constraints.*;
 
 import java.math.BigDecimal;

@@ -2,6 +2,7 @@ package com.communitynexus.inventory.entity;
 
 import com.communitynexus.common.entity.BaseEntity;
 import com.communitynexus.common.exception.NexusException;
+import com.communitynexus.inventory.ProductCategory;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;

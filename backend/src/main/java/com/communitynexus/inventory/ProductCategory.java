@@ -1,4 +1,4 @@
-package com.communitynexus.inventory.entity;
+package com.communitynexus.inventory;
 
 public enum ProductCategory {
     MEDICINE,

@@ -1,7 +1,7 @@
 package com.communitynexus.inventory.dto;
 
 import com.communitynexus.inventory.entity.Product;
-import com.communitynexus.inventory.entity.ProductCategory;
+import com.communitynexus.inventory.ProductCategory;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 import java.math.BigDecimal;

@@ -2,7 +2,7 @@ package com.communitynexus.inventory.controller;
 
 import com.communitynexus.auth.AuthUser;
 import com.communitynexus.inventory.dto.*;
-import com.communitynexus.inventory.entity.ProductCategory;
+import com.communitynexus.inventory.ProductCategory;
 import com.communitynexus.inventory.service.ProductService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;

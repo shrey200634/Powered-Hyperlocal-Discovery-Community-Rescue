@@ -1,0 +1,40 @@
+# phrase,terms,category      (lines starting with # are ignored)
+# ---- medicine ----
+bukhar,paracetamol,MEDICINE
+fever,paracetamol,MEDICINE
+sar dard,paracetamol,MEDICINE
+sir dard,paracetamol,MEDICINE
+headache,paracetamol,MEDICINE
+badan dard,paracetamol,MEDICINE
+body pain,paracetamol,MEDICINE
+khansi,cough,MEDICINE
+cough,cough,MEDICINE
+dast,ors,MEDICINE
+loose motion,ors,MEDICINE
+ulti,ors,MEDICINE
+dehydration,ors,MEDICINE
+ors,ors,MEDICINE
+dawa,,MEDICINE
+dawai,,MEDICINE
+medicine,,MEDICINE
+tablet,,MEDICINE
+goli,,MEDICINE
+# ---- dairy ----
+doodh,milk,DAIRY
+milk,milk,DAIRY
+dahi,curd,DAIRY
+curd,curd,DAIRY
+paneer,paneer,DAIRY
+# ---- bakery ----
+double roti,bread,BAKERY
+bread,bread,BAKERY
+pav,pav|bread,BAKERY
+# ---- grocery ----
+aata,atta,GROCERY
+atta,atta,GROCERY
+chini,sugar,GROCERY
+shakkar,sugar,GROCERY
+chawal,rice,GROCERY
+dal,dal,GROCERY
+namak,salt,GROCERY
+tel,oil,GROCERY

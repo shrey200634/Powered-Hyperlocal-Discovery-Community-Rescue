@@ -3,13 +3,12 @@ package com.communitynexus.inventory.service;
 import com.communitynexus.common.exception.NexusException;
 import com.communitynexus.inventory.config.InventoryProperties;
 import com.communitynexus.inventory.dto.*;
-import com.communitynexus.inventory.entity.Product;
-import com.communitynexus.inventory.entity.ProductCategory;
-import com.communitynexus.inventory.entity.Store;
+import com.communitynexus.inventory.entity.*;
 import com.communitynexus.inventory.event.StockUpdatedEvent;
 import com.communitynexus.inventory.geo.StoreDistance;
 import com.communitynexus.inventory.geo.StoreGeoIndex;
 import com.communitynexus.inventory.repo.ProductRepository;
+import com.communitynexus.inventory.repo.SecondLifeOfferRepository;
 import com.communitynexus.inventory.repo.StoreRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
@@ -17,6 +16,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -36,6 +36,7 @@ public class ProductService {
     private final StoreGeoIndex geoIndex;
     private final InventoryProperties props;
     private final ApplicationEventPublisher events;
+    private final SecondLifeOfferRepository offerRepo;
 
     // ---------------- shopkeeper side ----------------
 
@@ -62,6 +63,10 @@ public class ProductService {
         }
 
         if (req.quantity() != null) product.setQuantity(req.quantity());
+        if (product.getQuantity() == 0) {
+            offerRepo.findByProduct_IdAndStatus(product.getId(), SecondLifeStatus.SAVE_IT_PRICE)
+                    .ifPresent(SecondLifeOffer::markSold);
+        }
         if (req.price() != null) product.changePrice(req.price());
 
         store.confirmStock();
@@ -79,12 +84,12 @@ public class ProductService {
 
     @Transactional(readOnly = true)
     public List<NearbyStoreResult> nearby(double lat, double lng, Integer radiusM, String q,
-                                          ProductCategory category, String city) {
+                                          ProductCategory category, String city, boolean dealsOnly) {
         int radius = clampRadius(radiusM);
         String cityKey = Store.normalizeCity(city == null || city.isBlank() ? props.defaultCity() : city);
         String query = (q == null) ? "" : Product.keyOf(q);
 
-        // 1. Redis: which stores are close? (nearest first)
+        // 1. Redis: nearby stores
         List<StoreDistance> close = geoIndex.nearby(cityKey, lat, lng, radius, MAX_STORES_FROM_REDIS);
         if (close.isEmpty()) {
             return List.of();
@@ -92,7 +97,7 @@ public class ProductService {
         Map<Long, Double> distanceById = close.stream()
                 .collect(Collectors.toMap(StoreDistance::storeId, StoreDistance::meters));
 
-        // 2. MySQL: keep only active, non-stale stores
+        // 2. MySQL: active, non-stale stores
         Map<Long, Store> stores = storeRepo.findAllById(distanceById.keySet()).stream()
                 .filter(Store::isActive)
                 .filter(s -> !s.isStale(props.staleAfter()))
@@ -101,15 +106,28 @@ public class ProductService {
             return List.of();
         }
 
-        // 3. MySQL: matching, in-stock, not-expired products in those stores
+        // 3. MySQL: matching products
         LocalDate today = LocalDate.now(props.timeZone());
         List<Product> products = productRepo.searchInStores(stores.keySet(), query, category, today);
+        if (products.isEmpty()) {
+            return List.of();
+        }
 
-        // 4. Group by store, build results
+        // 3b. Which of them are on the Second-Life Shelf? (one query for all)
+        Map<Long, BigDecimal> savePrices = offerRepo
+                .findByProduct_IdInAndStatus(products.stream().map(Product::getId).toList(), SecondLifeStatus.SAVE_IT_PRICE)
+                .stream()
+                .collect(Collectors.toMap(o -> o.getProduct().getId(), SecondLifeOffer::getSavePrice, (a, b) -> a));
+
+        if (dealsOnly) {
+            products = products.stream().filter(p -> savePrices.containsKey(p.getId())).toList();
+        }
+
+        // 4. Group by store, open first, then nearest
         LocalTime now = LocalTime.now(props.timeZone());
         Map<Long, List<ProductResponse>> byStore = products.stream()
                 .collect(Collectors.groupingBy(p -> p.getStore().getId(),
-                        Collectors.mapping(ProductResponse::from, Collectors.toList())));
+                        Collectors.mapping(p -> ProductResponse.from(p, savePrices.get(p.getId())), Collectors.toList())));
 
         return byStore.entrySet().stream()
                 .map(e -> {
@@ -120,7 +138,6 @@ public class ProductService {
                             s.isOpenAt(now),
                             e.getValue());
                 })
-                // open shops first, then nearest (doc C4: "ranked by distance, stock and relevance")
                 .sorted(Comparator.comparing(NearbyStoreResult::openNow).reversed()
                         .thenComparingInt(NearbyStoreResult::distanceMeters))
                 .toList();

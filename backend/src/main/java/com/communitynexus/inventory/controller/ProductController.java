@@ -42,14 +42,14 @@ public class ProductController {
         return productService.updateStock(me.accountId(), id, req);
     }
 
-    /** Doc C1: GET /products/nearby?lat&lng&radius&q */
     @GetMapping("/products/nearby")
     public List<NearbyStoreResult> nearby(@RequestParam double lat,
                                           @RequestParam double lng,
                                           @RequestParam(required = false) Integer radius,
                                           @RequestParam(required = false) String q,
                                           @RequestParam(required = false) ProductCategory category,
-                                          @RequestParam(required = false) String city) {
-        return productService.nearby(lat, lng, radius, q, category, city);
+                                          @RequestParam(required = false) String city,
+                                          @RequestParam(defaultValue = "false") boolean deals) {
+        return productService.nearby(lat, lng, radius, q, category, city, deals);
     }
 }

@@ -72,6 +72,6 @@ nexus:
       donate-at: "17:00"           # doc story: "at 5 pm the last five are offered to an NGO"
 
   reservation:
-    hold-duration: 30m          # doc: "held for 30 minutes"
+    hold-duration: ${HOLD_DURATION:30m}          # doc: "held for 30 minutes"
     max-active-per-user: 3      # stop one person locking a whole shelf
     sweep-every-ms: 60000       # safety net: check for missed expiries every minute

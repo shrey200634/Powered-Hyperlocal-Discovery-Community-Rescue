@@ -1,5 +1,6 @@
 package com.communitynexus.inventory;
 
+import com.communitynexus.inventory.config.InventoryProperties;
 import com.communitynexus.inventory.dto.NearbyStoreResult;
 import com.communitynexus.inventory.service.ProductService;
 import lombok.RequiredArgsConstructor;
@@ -13,6 +14,12 @@ import java.util.List;
 public class InventoryCatalog {
 
     private final ProductService productService;
+
+    private final InventoryProperties props;
+
+    public String defaultCity() {
+        return props.defaultCity();
+    }
 
     /** Shops near (lat,lng) that have products matching one term, optionally in one category. */
     public List<NearbyStoreResult> findNearby(double lat, double lng, Integer radiusM,

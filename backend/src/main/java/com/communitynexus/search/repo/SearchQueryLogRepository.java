@@ -14,12 +14,12 @@ public interface SearchQueryLogRepository extends JpaRepository<SearchQueryLog, 
 
     @Query("""
             select new com.communitynexus.search.dto.UnmetNeedRow(
-                       l.text, count(l), max(l.createdAt), avg(l.lat), avg(l.lng))
+                       l.terms, count(l), max(l.createdAt), avg(l.lat), avg(l.lng))
             from SearchQueryLog l
             where l.found = false
               and l.city = :city
               and l.createdAt >= :since
-            group by l.text
+            group by l.terms
             order by count(l) desc
             """)
     List<UnmetNeedRow> topUnmet(@Param("city") String city,

@@ -70,3 +70,8 @@ nexus:
       flag-within-days: 2          # items expiring today/tomorrow/day after show up
       default-discount-pct: 30     # suggested save-it price = 30% off
       donate-at: "17:00"           # doc story: "at 5 pm the last five are offered to an NGO"
+
+  reservation:
+    hold-duration: 30m          # doc: "held for 30 minutes"
+    max-active-per-user: 3      # stop one person locking a whole shelf
+    sweep-every-ms: 60000       # safety net: check for missed expiries every minute

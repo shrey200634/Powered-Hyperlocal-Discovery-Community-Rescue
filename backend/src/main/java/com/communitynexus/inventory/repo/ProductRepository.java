@@ -3,6 +3,7 @@ package com.communitynexus.inventory.repo;
 import com.communitynexus.inventory.entity.Product;
 import com.communitynexus.inventory.ProductCategory;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -40,4 +41,12 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     List<Product> findNearExpiry(@Param("storeId") Long storeId,
                                  @Param("today") LocalDate today,
                                  @Param("until") LocalDate until);
+
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("update Product p set p.quantity = p.quantity - :qty where p.id = :id and p.quantity >= :qty")
+    int takeStock(@Param("id") Long productId, @Param("qty") int qty);
+
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("update Product p set p.quantity = p.quantity + :qty where p.id = :id")
+    int returnStock(@Param("id") Long productId, @Param("qty") int qty);
 }

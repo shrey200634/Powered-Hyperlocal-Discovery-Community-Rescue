@@ -75,3 +75,17 @@ nexus:
     hold-duration: ${HOLD_DURATION:30m}          # doc: "held for 30 minutes"
     max-active-per-user: 3      # stop one person locking a whole shelf
     sweep-every-ms: 60000       # safety net: check for missed expiries every minute
+
+  donation:
+    default-city: bhopal
+    default-day-high-c: 28          # used when the app doesn't send today's temperature
+    min-safe-time-to-post: 30m      # less than this left → don't post, send to compost/animal shelter
+    freshness: # doc C5 — PLACEHOLDER values, review with partner NGO + FSSAI
+      base-hours:
+        HIGH_RISK: 2
+        COOKED: 4
+        DRY: 8
+      cool-below-c: 30               # below 30 °C → factor 1.0
+      hot-above-c: 38                # above 38 °C → hot-factor
+      warm-factor: 0.75              # 30–38 °C
+      hot-factor: 0.5

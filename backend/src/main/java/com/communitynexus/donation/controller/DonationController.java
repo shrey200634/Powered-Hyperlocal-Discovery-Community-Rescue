@@ -2,6 +2,7 @@ package com.communitynexus.donation.controller;
 
 import com.communitynexus.auth.AuthUser;
 import com.communitynexus.donation.dto.DonationResponse;
+import com.communitynexus.donation.dto.NearbyDonationResponse;
 import com.communitynexus.donation.dto.PostDonationRequest;
 import com.communitynexus.donation.service.DonationService;
 import jakarta.validation.Valid;
@@ -20,7 +21,8 @@ public class DonationController {
 
     private final DonationService donationService;
 
-    /** Doc C1: POST /donations */
+    // ---- donor ----
+
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasRole('DONOR')")
@@ -34,10 +36,38 @@ public class DonationController {
         return donationService.mine(me.accountId());
     }
 
-    /** Doc C1: POST /donations/{id}/cancel */
     @PostMapping("/{id}/cancel")
     @PreAuthorize("hasRole('DONOR')")
     public DonationResponse cancel(@AuthenticationPrincipal AuthUser me, @PathVariable Long id) {
         return donationService.cancel(me.accountId(), id);
+    }
+
+    // ---- NGO ----
+
+    /** Doc C1: GET /donations/nearby */
+    @GetMapping("/nearby")
+    @PreAuthorize("hasRole('NGO')")
+    public List<NearbyDonationResponse> nearby(@AuthenticationPrincipal AuthUser me) {
+        return donationService.nearbyForNgo(me.accountId());
+    }
+
+    /** Doc C1: POST /donations/{id}/accept */
+    @PostMapping("/{id}/accept")
+    @PreAuthorize("hasRole('NGO')")
+    public DonationResponse accept(@AuthenticationPrincipal AuthUser me, @PathVariable Long id) {
+        return donationService.accept(me.accountId(), id);
+    }
+
+    @GetMapping("/accepted")
+    @PreAuthorize("hasRole('NGO')")
+    public List<DonationResponse> accepted(@AuthenticationPrincipal AuthUser me) {
+        return donationService.acceptedByMe(me.accountId());
+    }
+
+    // ---- donor / accepting NGO / admin ----
+
+    @GetMapping("/{id}")
+    public DonationResponse get(@AuthenticationPrincipal AuthUser me, @PathVariable Long id) {
+        return donationService.get(me, id);
     }
 }

@@ -16,10 +16,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Doc C6 "food_donations": donor_id, ngo_id, status, cooked_at, safe_until, photo_url, priority, lat, lng.
- * Index on (status, safe_until) as the doc says — the expiry sweeper and "nearby open donations" use it.
- */
+
 @Entity
 @Table(name = "don_food_donations", indexes = {
         @Index(name = "idx_don_fd_status_safe", columnList = "status, safe_until"),
@@ -29,6 +26,7 @@ import java.util.List;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class FoodDonation extends BaseEntity {
 
+    /** Optimistic lock: if two NGOs save the same row at once (e.g. Redis down), the second fails. */
     @Version
     private Long version;
 
@@ -47,7 +45,7 @@ public class FoodDonation extends BaseEntity {
     @Column(nullable = false)
     private Double lng;
 
-    /** "Back gate, ask for Ramesh". Shown only to the accepted NGO and the volunteer. */
+    /** "Back gate, ask for Ramesh". Shown only to the donor, the accepted NGO and admin. */
     @Column(name = "pickup_note", length = 200)
     private String pickupNote;
 
@@ -84,6 +82,10 @@ public class FoodDonation extends BaseEntity {
     @OrderBy("id ASC")
     private List<DonationItem> items = new ArrayList<>();
 
+    // =====================================================================
+    // Creation
+    // =====================================================================
+
     public static FoodDonation post(Long donorId, String donorName, String city, double lat, double lng,
                                     String pickupNote, Instant cookedAt, Instant safeUntil, double dayHighC) {
         FoodDonation d = new FoodDonation();
@@ -109,7 +111,9 @@ public class FoodDonation extends BaseEntity {
         }
     }
 
-    // ---------- Freshness Clock ----------
+    // =====================================================================
+    // Freshness Clock
+    // =====================================================================
 
     public boolean isSafeAt(Instant when) {
         return when.isBefore(safeUntil);
@@ -119,8 +123,11 @@ public class FoodDonation extends BaseEntity {
         return Math.max(0, Duration.between(Instant.now(), safeUntil).toMinutes());
     }
 
-    // ---------- state changes ----------
+    // =====================================================================
+    // State changes
+    // =====================================================================
 
+    /** Donor withdraws the post — only while no NGO has taken it. */
     public void cancelByDonor() {
         if (!status.isOpen()) {
             throw NexusException.conflict("CANNOT_CANCEL", "This donation is already " + status);
@@ -128,20 +135,41 @@ public class FoodDonation extends BaseEntity {
         this.status = DonationStatus.CANCELLED;
         this.closedAt = Instant.now();
     }
-    /** Doc R4: checked on the server for every accept — whatever the screen shows. */
-    public void accept(Long ngoId) {
-        if (!status.isOpen()) {
-            throw NexusException.conflict("ALREADY_ACCEPTED", "This food has already been taken by another NGO");
+
+    /**
+     * Throws the RIGHT reason if this donation can't be accepted now.
+     * Doc R4: "Every accept ... checks safe_until > now() on the server."
+     */
+    public void checkCanBeAccepted() {
+        switch (status) {
+            case POSTED, MATCHED -> {
+                // open — continue to the safety check below
+            }
+            case EXPIRED -> throw NexusException.conflict("DONATION_EXPIRED",
+                    "This food is past its safe time and can't be accepted");
+            case CANCELLED -> throw NexusException.conflict("DONATION_CANCELLED",
+                    "The donor cancelled this donation");
+            default -> throw NexusException.conflict("ALREADY_ACCEPTED",
+                    "This food has already been taken by another NGO");
         }
         if (!isSafeAt(Instant.now())) {
-            throw NexusException.conflict("DONATION_EXPIRED", "This food is past its safe time and can't be accepted");
+            throw NexusException.conflict("DONATION_EXPIRED",
+                    "This food is past its safe time and can't be accepted");
         }
+    }
+
+    public void accept(Long ngoId) {
+        checkCanBeAccepted();
         this.status = DonationStatus.ACCEPTED;
         this.ngoId = ngoId;
         this.acceptedAt = Instant.now();
     }
 
-    /** Freshness Clock ran out before pickup. */
+    /**
+     * Freshness Clock ran out before pickup → EXPIRED.
+     * Applies to POSTED, MATCHED and ACCEPTED (not yet picked up).
+     * @return true if this call changed the status.
+     */
     public boolean expireIfPastSafeTime() {
         boolean stillBeforePickup = status.isOpen() || status == DonationStatus.ACCEPTED;
         if (stillBeforePickup && !isSafeAt(Instant.now())) {
@@ -152,11 +180,15 @@ public class FoodDonation extends BaseEntity {
         return false;
     }
 
-    public boolean isAcceptedBy(Long ngoId) {
-        return this.ngoId != null && this.ngoId.equals(ngoId);
-    }
+    // =====================================================================
+    // Who is involved
+    // =====================================================================
 
     public boolean isPostedBy(Long accountId) {
         return donorId.equals(accountId);
+    }
+
+    public boolean isAcceptedBy(Long ngoId) {
+        return this.ngoId != null && this.ngoId.equals(ngoId);
     }
 }

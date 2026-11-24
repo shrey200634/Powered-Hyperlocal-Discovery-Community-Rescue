@@ -6,12 +6,13 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
-
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 
 @Slf4j
@@ -31,6 +32,21 @@ public class GlobalExceptionHandler {
                 ? ApiError.of("VALIDATION_FAILED", "Invalid request")
                 : new ApiError("VALIDATION_FAILED", fe.getDefaultMessage(), fe.getField());
         return ResponseEntity.badRequest().body(body);
+    }
+    // imports:
+    // import org.springframework.web.servlet.resource.NoResourceFoundException;
+    // import org.springframework.web.HttpRequestMethodNotSupportedException;
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiError> handleNoEndpoint(NoResourceFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiError.of("NOT_FOUND", "No such endpoint"));
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiError> handleWrongMethod(HttpRequestMethodNotSupportedException ex) {
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
+                .body(ApiError.of("METHOD_NOT_ALLOWED", "This endpoint doesn't support " + ex.getMethod()));
     }
 
     @ExceptionHandler(Exception.class)

@@ -1,14 +1,25 @@
 package com.communitynexus.donation.service;
 
+import com.communitynexus.auth.AuthUser;
+import com.communitynexus.auth.Role;
 import com.communitynexus.common.exception.NexusException;
+import com.communitynexus.common.geo.GeoMath;
+import com.communitynexus.common.tx.AfterCommit;
 import com.communitynexus.donation.config.DonationProperties;
 import com.communitynexus.donation.dto.DonationResponse;
+import com.communitynexus.donation.dto.NearbyDonationResponse;
 import com.communitynexus.donation.dto.PostDonationRequest;
 import com.communitynexus.donation.entity.DonationItem;
+import com.communitynexus.donation.entity.DonationStatus;
 import com.communitynexus.donation.entity.FoodDonation;
+import com.communitynexus.donation.entity.Ngo;
+import com.communitynexus.donation.event.DonationAcceptedEvent;
+import com.communitynexus.donation.event.DonationExpiredEvent;
 import com.communitynexus.donation.event.FoodPostedEvent;
 import com.communitynexus.donation.freshness.FreshnessClock;
+import com.communitynexus.donation.redis.DonationLock;
 import com.communitynexus.donation.repo.FoodDonationRepository;
+import com.communitynexus.donation.repo.NgoRepository;
 import com.communitynexus.user.UserDirectory;
 import com.communitynexus.user.UserSummary;
 import lombok.RequiredArgsConstructor;
@@ -20,8 +31,13 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -31,12 +47,27 @@ public class DonationService {
 
     private static final Duration MAX_FUTURE_SKEW = Duration.ofMinutes(10);
     private static final Duration MAX_AGE = Duration.ofHours(24);
+    private static final ZoneId IST = ZoneId.of("Asia/Kolkata");
+
+    private static final Set<DonationStatus> OPEN =
+            EnumSet.of(DonationStatus.POSTED, DonationStatus.MATCHED);
+    private static final Set<DonationStatus> BEFORE_PICKUP =
+            EnumSet.of(DonationStatus.POSTED, DonationStatus.MATCHED, DonationStatus.ACCEPTED);
+    private static final Set<DonationStatus> COUNTS_FOR_CAPACITY =
+            EnumSet.of(DonationStatus.ACCEPTED, DonationStatus.PICKED_UP, DonationStatus.DELIVERED, DonationStatus.CLOSED);
 
     private final FoodDonationRepository donationRepo;
+    private final NgoRepository ngoRepo;
+    private final NgoService ngoService;
     private final FreshnessClock freshnessClock;
+    private final DonationLock donationLock;
     private final DonationProperties props;
     private final UserDirectory userDirectory;
     private final ApplicationEventPublisher events;
+
+    // =====================================================================
+    // Donor
+    // =====================================================================
 
     /** Doc 05: "A kitchen posts surplus in 30 seconds." */
     @Transactional
@@ -78,12 +109,8 @@ public class DonationService {
                 i.weightKg(), i.packagedExpiry()));
         donationRepo.save(d);
 
-        Map<String, Integer> byGroup = d.getItems().stream()
-                .collect(Collectors.groupingBy(i -> i.getFoodGroup().name(),
-                        Collectors.summingInt(DonationItem::getServings)));
-
         events.publishEvent(new FoodPostedEvent(d.getId(), donorId, d.getCity(), d.getLat(), d.getLng(),
-                d.getTotalServings(), byGroup, safeUntil, now));
+                d.getTotalServings(), servingsByGroup(d), safeUntil, now));
 
         log.info("Donation {} posted by {}: {} servings, safe until {} ({} min left)",
                 d.getId(), donorName, d.getTotalServings(), safeUntil, d.minutesLeft());
@@ -92,17 +119,143 @@ public class DonationService {
 
     @Transactional(readOnly = true)
     public List<DonationResponse> mine(Long donorId) {
-        return donationRepo.findByDonorIdOrderByIdDesc(donorId).stream().map(DonationResponse::from).toList();
+        return donationRepo.findByDonorIdOrderByIdDesc(donorId).stream()
+                .map(DonationResponse::from)
+                .toList();
     }
 
     @Transactional
     public DonationResponse cancel(Long donorId, Long donationId) {
-        FoodDonation d = donationRepo.findWithItemsById(donationId)
-                .orElseThrow(() -> NexusException.notFound("Donation"));
+        FoodDonation d = load(donationId);
         if (!d.isPostedBy(donorId)) {
-            throw new NexusException(HttpStatus.FORBIDDEN, "FORBIDDEN", "This donation is not yours");
+            throw forbidden();
         }
         d.cancelByDonor();
         return DonationResponse.from(d);
+    }
+
+    // =====================================================================
+    // NGO
+    // =====================================================================
+
+    /** Doc C1: GET /donations/nearby. Nearest first (AI ranking replaces this in Step 12). */
+    @Transactional(readOnly = true)
+    public List<NearbyDonationResponse> nearbyForNgo(Long ngoAccountId) {
+        Ngo ngo = ngoService.loadMine(ngoAccountId);
+
+        return donationRepo.findByCityAndStatusInAndSafeUntilAfter(ngo.getCity(), OPEN, Instant.now()).stream()
+                .map(d -> Map.entry(d, GeoMath.distanceMeters(ngo.getLat(), ngo.getLng(), d.getLat(), d.getLng())))
+                .filter(e -> e.getValue() <= props.nearbyRadiusM())
+                .sorted(Map.Entry.comparingByValue())
+                .map(e -> NearbyDonationResponse.from(e.getKey(), e.getValue(), servingsByGroup(e.getKey())))
+                .toList();
+    }
+
+    /**
+     * Doc C4 step 5: "NGO calls accept. Donation takes lock:donation:{id}, publishes donation.accepted."
+     * Order: open & safe (R4)? → room in the shelter today? → first to accept (Redis)? → accept.
+     */
+    @Transactional
+    public DonationResponse accept(Long ngoAccountId, Long donationId) {
+        Ngo ngo = ngoService.loadMine(ngoAccountId);
+        FoodDonation d = load(donationId);
+
+        d.checkCanBeAccepted();          // open? not cancelled? still safe? → right message if not
+
+        // Capacity: don't send a shelter more food than it can serve today
+        Instant startOfToday = LocalDate.now(IST).atStartOfDay(IST).toInstant();
+        long usedToday = donationRepo.servingsAcceptedSince(ngo.getId(), startOfToday, COUNTS_FOR_CAPACITY);
+        long roomLeft = ngo.getCapacityPerDay() - usedToday;
+        if (d.getTotalServings() > roomLeft) {
+            throw NexusException.conflict("OVER_CAPACITY",
+                    "You have room for " + Math.max(0, roomLeft) + " more servings today; this donation has "
+                            + d.getTotalServings() + ". Update your capacity if you can take more.");
+        }
+
+        // First NGO wins (Redis SET NX). If our DB save later fails, give the lock back.
+        if (!donationLock.tryAcquire(donationId, ngo.getId(), props.acceptLockTtl())) {
+            throw NexusException.conflict("ALREADY_ACCEPTED", "Another NGO accepted this food a moment ago");
+        }
+        AfterCommit.onRollback("release donation lock " + donationId, () -> donationLock.release(donationId));
+
+        d.accept(ngo.getId());           // re-checks; @Version also guards the row
+
+        events.publishEvent(new DonationAcceptedEvent(
+                d.getId(), d.getDonorId(), ngo.getId(), ngo.getAccountId(),
+                d.getLat(), d.getLng(), ngo.getLat(), ngo.getLng(),
+                d.getTotalServings(), d.getSafeUntil(), Instant.now()));
+
+        log.info("Donation {} accepted by NGO {} '{}' ({} servings, {} min left)",
+                d.getId(), ngo.getId(), ngo.getName(), d.getTotalServings(), d.minutesLeft());
+        return DonationResponse.from(d);
+    }
+
+    @Transactional(readOnly = true)
+    public List<DonationResponse> acceptedByMe(Long ngoAccountId) {
+        Ngo ngo = ngoService.loadMine(ngoAccountId);
+        return donationRepo.findByNgoIdOrderByIdDesc(ngo.getId()).stream()
+                .map(DonationResponse::from)
+                .toList();
+    }
+
+    // =====================================================================
+    // Anyone involved
+    // =====================================================================
+
+    /** Donor who posted it, the NGO that accepted it, or admin. */
+    @Transactional(readOnly = true)
+    public DonationResponse get(AuthUser me, Long donationId) {
+        FoodDonation d = load(donationId);
+        if (d.isPostedBy(me.accountId()) || me.role() == Role.ADMIN) {
+            return DonationResponse.from(d);
+        }
+        if (me.role() == Role.NGO) {
+            Ngo ngo = ngoRepo.findByAccountId(me.accountId()).orElse(null);
+            if (ngo != null && d.isAcceptedBy(ngo.getId())) {
+                return DonationResponse.from(d);
+            }
+        }
+        throw forbidden();
+    }
+
+    // =====================================================================
+    // Freshness Clock enforcement (called by DonationExpirySweeper)
+    // =====================================================================
+
+    @Transactional(readOnly = true)
+    public List<Long> findIdsPastSafeTime() {
+        return donationRepo.findIdsPastSafeTime(BEFORE_PICKUP, Instant.now());
+    }
+
+    /** Doc 06: "When the clock runs out, the post disappears." Idempotent. */
+    @Transactional
+    public boolean expireIfPastSafeTime(Long donationId) {
+        FoodDonation d = donationRepo.findById(donationId).orElse(null);
+        if (d == null || !d.expireIfPastSafeTime()) {
+            return false;
+        }
+        AfterCommit.run("release donation lock " + donationId, () -> donationLock.release(donationId));
+        events.publishEvent(new DonationExpiredEvent(
+                d.getId(), d.getDonorId(), d.getNgoId(), d.getTotalServings(), Instant.now()));
+        log.info("Donation {} EXPIRED - Freshness Clock ran out ({} servings)", d.getId(), d.getTotalServings());
+        return true;
+    }
+
+    // =====================================================================
+    // Helpers
+    // =====================================================================
+
+    private FoodDonation load(Long id) {
+        return donationRepo.findWithItemsById(id)
+                .orElseThrow(() -> NexusException.notFound("Donation"));
+    }
+
+    private static Map<String, Integer> servingsByGroup(FoodDonation d) {
+        return d.getItems().stream().collect(Collectors.groupingBy(
+                i -> i.getFoodGroup().name(), TreeMap::new, Collectors.summingInt(DonationItem::getServings)));
+    }
+
+    private static NexusException forbidden() {
+        return new NexusException(HttpStatus.FORBIDDEN, "FORBIDDEN", "You are not part of this donation");
     }
 }

@@ -3,6 +3,7 @@ package com.communitynexus.donation.controller;
 import com.communitynexus.auth.AuthUser;
 import com.communitynexus.donation.dto.CreateNgoRequest;
 import com.communitynexus.donation.dto.NgoResponse;
+import com.communitynexus.donation.dto.UpdateNgoRequest;
 import com.communitynexus.donation.service.NgoService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -28,5 +29,11 @@ public class NgoController {
     @GetMapping("/mine")
     public NgoResponse mine(@AuthenticationPrincipal AuthUser me) {
         return ngoService.mine(me.accountId());
+    }
+
+    /** Doc 05: the NGO "sets capacity". */
+    @PatchMapping("/mine")
+    public NgoResponse update(@AuthenticationPrincipal AuthUser me, @Valid @RequestBody UpdateNgoRequest req) {
+        return ngoService.updateMine(me.accountId(), req);
     }
 }

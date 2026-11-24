@@ -16,17 +16,20 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
-
+/**
+ * Doc C6 "food_donations": donor_id, ngo_id, status, cooked_at, safe_until, photo_url, priority, lat, lng.
+ * source_offer_id is UNIQUE: one Second-Life offer can never create two donations (idempotent bridge).
+ */
 @Entity
 @Table(name = "don_food_donations", indexes = {
         @Index(name = "idx_don_fd_status_safe", columnList = "status, safe_until"),
-        @Index(name = "idx_don_fd_donor", columnList = "donor_id")
+        @Index(name = "idx_don_fd_donor", columnList = "donor_id"),
+        @Index(name = "idx_don_fd_source_offer", columnList = "source_offer_id", unique = true)
 })
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class FoodDonation extends BaseEntity {
 
-    /** Optimistic lock: if two NGOs save the same row at once (e.g. Redis down), the second fails. */
     @Version
     private Long version;
 
@@ -45,14 +48,13 @@ public class FoodDonation extends BaseEntity {
     @Column(nullable = false)
     private Double lng;
 
-    /** "Back gate, ask for Ramesh". Shown only to the donor, the accepted NGO and admin. */
     @Column(name = "pickup_note", length = 200)
     private String pickupNote;
 
+    /** For shelf items this is the moment they came off the shelf. */
     @Column(name = "cooked_at", nullable = false)
     private Instant cookedAt;
 
-    /** Doc C1: "safe_until is computed when the post is saved and checked on every later action." */
     @Column(name = "safe_until", nullable = false)
     private Instant safeUntil;
 
@@ -68,6 +70,14 @@ public class FoodDonation extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 12)
     private DonationStatus status;
+
+    /** Null on rows created before 7C → treated as DIRECT. */
+    @Enumerated(EnumType.STRING)
+    @Column(length = 10)
+    private DonationSource source;
+
+    @Column(name = "source_offer_id")
+    private Long sourceOfferId;
 
     @Column(name = "ngo_id")
     private Long ngoId;
@@ -86,6 +96,7 @@ public class FoodDonation extends BaseEntity {
     // Creation
     // =====================================================================
 
+    /** A kitchen / hall posts cooked surplus. */
     public static FoodDonation post(Long donorId, String donorName, String city, double lat, double lng,
                                     String pickupNote, Instant cookedAt, Instant safeUntil, double dayHighC) {
         FoodDonation d = new FoodDonation();
@@ -99,6 +110,17 @@ public class FoodDonation extends BaseEntity {
         d.safeUntil = safeUntil;
         d.dayHighC = dayHighC;
         d.status = DonationStatus.POSTED;
+        d.source = DonationSource.DIRECT;
+        return d;
+    }
+
+    /** The BRIDGE: unsold near-expiry shop items become a donation. The shopkeeper is the donor. */
+    public static FoodDonation fromShelf(Long shopOwnerId, String storeName, String city, double lat, double lng,
+                                         Instant safeUntil, double dayHighC, Long offerId) {
+        FoodDonation d = post(shopOwnerId, storeName, city, lat, lng,
+                "Ask at the counter - Second-Life Shelf items", Instant.now(), safeUntil, dayHighC);
+        d.source = DonationSource.SHELF;
+        d.sourceOfferId = offerId;
         return d;
     }
 
@@ -127,7 +149,6 @@ public class FoodDonation extends BaseEntity {
     // State changes
     // =====================================================================
 
-    /** Donor withdraws the post — only while no NGO has taken it. */
     public void cancelByDonor() {
         if (!status.isOpen()) {
             throw NexusException.conflict("CANNOT_CANCEL", "This donation is already " + status);
@@ -136,10 +157,7 @@ public class FoodDonation extends BaseEntity {
         this.closedAt = Instant.now();
     }
 
-    /**
-     * Throws the RIGHT reason if this donation can't be accepted now.
-     * Doc R4: "Every accept ... checks safe_until > now() on the server."
-     */
+    /** Throws the RIGHT reason if this donation can't be accepted now (doc R4). */
     public void checkCanBeAccepted() {
         switch (status) {
             case POSTED, MATCHED -> {
@@ -165,11 +183,6 @@ public class FoodDonation extends BaseEntity {
         this.acceptedAt = Instant.now();
     }
 
-    /**
-     * Freshness Clock ran out before pickup → EXPIRED.
-     * Applies to POSTED, MATCHED and ACCEPTED (not yet picked up).
-     * @return true if this call changed the status.
-     */
     public boolean expireIfPastSafeTime() {
         boolean stillBeforePickup = status.isOpen() || status == DonationStatus.ACCEPTED;
         if (stillBeforePickup && !isSafeAt(Instant.now())) {
@@ -190,5 +203,9 @@ public class FoodDonation extends BaseEntity {
 
     public boolean isAcceptedBy(Long ngoId) {
         return this.ngoId != null && this.ngoId.equals(ngoId);
+    }
+
+    public DonationSource getSourceOrDirect() {
+        return source == null ? DonationSource.DIRECT : source;
     }
 }

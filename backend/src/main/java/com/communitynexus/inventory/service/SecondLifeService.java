@@ -1,6 +1,7 @@
 package com.communitynexus.inventory.service;
 
 import com.communitynexus.common.exception.NexusException;
+import com.communitynexus.inventory.ProductCategory;
 import com.communitynexus.inventory.config.InventoryProperties;
 import com.communitynexus.inventory.dto.FlagRequest;
 import com.communitynexus.inventory.dto.NearExpiryItem;
@@ -10,6 +11,7 @@ import com.communitynexus.inventory.entity.SecondLifeOffer;
 import com.communitynexus.inventory.entity.SecondLifeStatus;
 import com.communitynexus.inventory.entity.Store;
 import com.communitynexus.inventory.event.ShelfFlaggedEvent;
+import com.communitynexus.inventory.event.ShelfReadyToDonateEvent;
 import com.communitynexus.inventory.repo.ProductRepository;
 import com.communitynexus.inventory.repo.SecondLifeOfferRepository;
 import lombok.RequiredArgsConstructor;
@@ -38,6 +40,10 @@ public class SecondLifeService {
     private final InventoryProperties props;
     private final ApplicationEventPublisher events;
 
+    // =====================================================================
+    // Ladder steps 1–2: Sell → Save-it price (shopkeeper, one tap)
+    // =====================================================================
+
     /** Shopkeeper's morning list: what is about to expire in my shop? */
     @Transactional(readOnly = true)
     public List<NearExpiryItem> nearExpiry(Long ownerId, Long storeId) {
@@ -54,7 +60,7 @@ public class SecondLifeService {
                 .toList();
     }
 
-    /** The one tap: move this product to the Second-Life Shelf. Doc C1: POST /products/{id}/second-life */
+    /** Doc C1: POST /products/{id}/second-life — the one tap. */
     @Transactional
     public SecondLifeOfferResponse flag(Long ownerId, Long productId, FlagRequest req) {
         Product product = productRepo.findById(productId)
@@ -88,9 +94,68 @@ public class SecondLifeService {
         return SecondLifeOfferResponse.from(offer);
     }
 
-    // ---------- helpers ----------
+    // =====================================================================
+    // Ladder steps 3–4: Donate → Return to soil (automatic, ShelfDonationScheduler)
+    // =====================================================================
 
-    /** 30% off, rounded to whole rupees — shopkeepers don't sell bread for ₹27.65. */
+    @Transactional(readOnly = true)
+    public List<Long> findOfferIdsDueForDonation() {
+        return offerRepo.findIdsDueForDonation(
+                SecondLifeStatus.SAVE_IT_PRICE, ProductCategory.foodCategories(), Instant.now());
+    }
+
+    /**
+     * Moves ONE offer down the ladder if its donate time has come. Idempotent.
+     * @return true if units were handed to Food Rescue.
+     */
+    @Transactional
+    public boolean moveDownLadderIfDue(Long offerId) {
+        SecondLifeOffer offer = offerRepo.findById(offerId).orElse(null);
+        if (offer == null
+                || offer.getStatus() != SecondLifeStatus.SAVE_IT_PRICE
+                || offer.getDonateAfter().isAfter(Instant.now())) {
+            return false;
+        }
+
+        Product product = offer.getProduct();
+        Store store = product.getStore();
+        int unsold = product.getQuantity();
+
+        // Everything sold at save-it price → nothing wasted, nothing to donate
+        if (unsold <= 0) {
+            offer.markSold();
+            log.info("Second-Life offer {}: all sold, nothing to donate", offerId);
+            return false;
+        }
+
+        // Step 4: already past expiry → not food rescue; off the shelf to animal shelter / compost
+        if (product.isExpired(today())) {
+            product.setQuantity(0);
+            offer.closeAsWaste();
+            log.info("Second-Life offer {}: {} x {} expired before donation -> return to soil (animal shelter / compost)",
+                    offerId, unsold, product.getName());
+            return false;
+        }
+
+        // Step 3: take the unsold units off the shelf and hand them to Food Rescue
+        product.setQuantity(0);
+        offer.markDonated();
+
+        events.publishEvent(new ShelfReadyToDonateEvent(
+                offer.getId(), store.getId(), store.getName(), store.getOwnerId(), store.getCity(),
+                store.getLat(), store.getLng(), product.getId(), product.getName(), product.getCategory().name(),
+                unsold, product.getExpiryDate(), Instant.now()));
+
+        log.info("Second-Life offer {}: {} unsold x {} moved off the shelf -> Food Rescue",
+                offerId, unsold, product.getName());
+        return true;
+    }
+
+    // =====================================================================
+    // Helpers
+    // =====================================================================
+
+    /** 30% off, rounded to whole rupees. */
     private BigDecimal suggestedPrice(BigDecimal price) {
         BigDecimal keep = BigDecimal.valueOf(100 - props.secondLife().defaultDiscountPct());
         BigDecimal suggested = price.multiply(keep).divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_UP);

@@ -70,6 +70,7 @@ nexus:
       flag-within-days: 2          # items expiring today/tomorrow/day after show up
       default-discount-pct: 30     # suggested save-it price = 30% off
       donate-at: "17:00"           # doc story: "at 5 pm the last five are offered to an NGO"
+      check-every-ms: 60000        # how often we look for offers whose donate time has come
 
   reservation:
     hold-duration: ${HOLD_DURATION:30m}          # doc: "held for 30 minutes"

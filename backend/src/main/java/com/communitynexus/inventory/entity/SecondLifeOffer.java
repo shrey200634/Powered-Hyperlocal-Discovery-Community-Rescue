@@ -66,4 +66,10 @@ public class SecondLifeOffer extends BaseEntity {
             this.status = SecondLifeStatus.DONATED;
         }
     }
+    /** Ladder step 4: expired before anyone took it → animal shelter / compost, never landfill. */
+    public void closeAsWaste() {
+        if (status == SecondLifeStatus.SAVE_IT_PRICE) {
+            this.status = SecondLifeStatus.CLOSED;
+        }
+    }
 }

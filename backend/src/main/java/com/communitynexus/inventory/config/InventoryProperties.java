@@ -18,7 +18,8 @@ public record InventoryProperties(
     public record SecondLife(
             int flagWithinDays,
             int defaultDiscountPct,
-            LocalTime donateAt
+            LocalTime donateAt,
+            long checkEveryMs
     ) {
     }
 }

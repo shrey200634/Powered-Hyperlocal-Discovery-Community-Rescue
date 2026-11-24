@@ -28,6 +28,9 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.communitynexus.donation.FoodGroup;
+import com.communitynexus.donation.FoodType;
+import com.communitynexus.inventory.event.ShelfReadyToDonateEvent;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -149,6 +152,49 @@ public class DonationService {
                 .sorted(Map.Entry.comparingByValue())
                 .map(e -> NearbyDonationResponse.from(e.getKey(), e.getValue(), servingsByGroup(e.getKey())))
                 .toList();
+    }
+    /**
+     * The BRIDGE (doc 04 + C1): unsold Second-Life items become a food donation.
+     * Idempotent: the outbox may deliver the event twice — source_offer_id is checked (and UNIQUE in the DB).
+     */
+    @Transactional
+    public void createFromShelf(ShelfReadyToDonateEvent e) {
+        if (donationRepo.existsBySourceOfferId(e.offerId())) {
+            log.info("Shelf offer {} already became a donation - skipping", e.offerId());
+            return;
+        }
+
+        Instant now = Instant.now();
+        // Shop items are packaged: safe until the end of the printed date (doc C5, no heat factor)
+        Instant safeUntil = freshnessClock.safeUntil(now,
+                List.of(new FreshnessClock.ItemInput(FoodType.PACKAGED, e.expiryDate())),
+                props.defaultDayHighC());
+
+        if (Duration.between(now, safeUntil).compareTo(props.minSafeTimeToPost()) < 0) {
+            log.info("Shelf offer {}: {} x {} too close to expiry for rescue -> return to soil",
+                    e.offerId(), e.quantity(), e.productName());
+            return;
+        }
+
+        FoodDonation d = FoodDonation.fromShelf(e.storeOwnerId(), e.storeName(), e.city(), e.lat(), e.lng(),
+                safeUntil, props.defaultDayHighC(), e.offerId());
+        // Pilot assumption: 1 unit ≈ 1 serving (a bread packet, a milk pouch). Tune with the partner NGO.
+        d.addItem(e.productName(), toFoodGroup(e.category()), FoodType.PACKAGED, e.quantity(), null, e.expiryDate());
+        donationRepo.save(d);
+
+        events.publishEvent(new FoodPostedEvent(d.getId(), d.getDonorId(), d.getCity(), d.getLat(), d.getLng(),
+                d.getTotalServings(), servingsByGroup(d), safeUntil, now));
+
+        log.info("BRIDGE: Second-Life offer {} -> donation {} ({} x {} from {}, safe until {})",
+                e.offerId(), d.getId(), e.quantity(), e.productName(), e.storeName(), safeUntil);
+    }
+
+    /** Shop category → Thali food group. */
+    private static FoodGroup toFoodGroup(String category) {
+        return switch (category) {
+            case "DAIRY" -> FoodGroup.DAIRY_FRUIT;   // milk, curd, paneer
+            default -> FoodGroup.GRAIN;              // BAKERY, GROCERY: bread, atta, rice
+        };
     }
 
     /**

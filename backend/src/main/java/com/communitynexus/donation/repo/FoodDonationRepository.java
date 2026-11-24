@@ -42,4 +42,5 @@ public interface FoodDonationRepository extends JpaRepository<FoodDonation, Long
     long servingsAcceptedSince(@Param("ngoId") Long ngoId,
                                @Param("since") Instant since,
                                @Param("statuses") Collection<DonationStatus> statuses);
+    boolean existsBySourceOfferId(Long sourceOfferId);
 }

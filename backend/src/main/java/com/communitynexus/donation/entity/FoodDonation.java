@@ -128,6 +128,33 @@ public class FoodDonation extends BaseEntity {
         this.status = DonationStatus.CANCELLED;
         this.closedAt = Instant.now();
     }
+    /** Doc R4: checked on the server for every accept — whatever the screen shows. */
+    public void accept(Long ngoId) {
+        if (!status.isOpen()) {
+            throw NexusException.conflict("ALREADY_ACCEPTED", "This food has already been taken by another NGO");
+        }
+        if (!isSafeAt(Instant.now())) {
+            throw NexusException.conflict("DONATION_EXPIRED", "This food is past its safe time and can't be accepted");
+        }
+        this.status = DonationStatus.ACCEPTED;
+        this.ngoId = ngoId;
+        this.acceptedAt = Instant.now();
+    }
+
+    /** Freshness Clock ran out before pickup. */
+    public boolean expireIfPastSafeTime() {
+        boolean stillBeforePickup = status.isOpen() || status == DonationStatus.ACCEPTED;
+        if (stillBeforePickup && !isSafeAt(Instant.now())) {
+            this.status = DonationStatus.EXPIRED;
+            this.closedAt = Instant.now();
+            return true;
+        }
+        return false;
+    }
+
+    public boolean isAcceptedBy(Long ngoId) {
+        return this.ngoId != null && this.ngoId.equals(ngoId);
+    }
 
     public boolean isPostedBy(Long accountId) {
         return donorId.equals(accountId);

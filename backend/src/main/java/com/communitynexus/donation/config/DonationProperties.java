@@ -11,6 +11,9 @@ public record DonationProperties(
         String defaultCity,
         double defaultDayHighC,
         Duration minSafeTimeToPost,
+        int nearbyRadiusM,
+        Duration acceptLockTtl,
+        long sweepEveryMs,
         Freshness freshness
 ) {
     public record Freshness(

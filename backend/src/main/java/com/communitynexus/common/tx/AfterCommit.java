@@ -11,14 +11,7 @@ public final class AfterCommit {
     }
 
     public static void run(String what, Runnable action) {
-        Runnable safe = () -> {
-            try {
-                action.run();
-            } catch (Exception e) {
-                log.warn("After-commit action '{}' failed: {}", what, e.getMessage());
-            }
-        };
-
+        Runnable safe = safe(what, action);
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
@@ -29,5 +22,30 @@ public final class AfterCommit {
         } else {
             safe.run();
         }
+    }
+
+    public static void onRollback(String what, Runnable action) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            return;
+        }
+        Runnable safe = safe(what, action);
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCompletion(int status) {
+                if (status == STATUS_ROLLED_BACK) {
+                    safe.run();
+                }
+            }
+        });
+    }
+
+    private static Runnable safe(String what, Runnable action) {
+        return () -> {
+            try {
+                action.run();
+            } catch (Exception e) {
+                log.warn("Transaction side-effect '{}' failed: {}", what, e.getMessage());
+            }
+        };
     }
 }

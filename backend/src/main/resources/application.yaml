@@ -80,6 +80,9 @@ nexus:
     default-city: bhopal
     default-day-high-c: 28          # used when the app doesn't send today's temperature
     min-safe-time-to-post: 30m      # less than this left → don't post, send to compost/animal shelter
+    nearby-radius-m: 5000            # NGOs see donations within 5 km
+    accept-lock-ttl: 10m             # doc C3: lock:donation:{id} expires 10 min
+    sweep-every-ms: 60000            # expire donations whose clock ran out
     freshness: # doc C5 — PLACEHOLDER values, review with partner NGO + FSSAI
       base-hours:
         HIGH_RISK: 2
